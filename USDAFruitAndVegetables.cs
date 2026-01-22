@@ -1,3 +1,4 @@
+
 /*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
@@ -15,114 +16,40 @@
  */
 
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.Serialization;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
 using NodaTime;
 using QuantConnect.Data;
+using QuantConnect.Data.UniverseSelection;
+using QuantConnect.Util;
 using static QuantConnect.StringExtensions;
 
 namespace QuantConnect.DataSource
 {
     /// <summary>
-    /// USDAFruitAndVegetables - USDA ERS retail price estimates for 150+ commonly consumed fresh and
-    /// processed fruits and vegetables. Includes price per pound/pint and normalized price per edible
-    /// cup equivalent.
+    /// USDAFruitAndVegetables - Collection of USDA ERS retail price data for a product.
+    /// Aggregates all product forms (Fresh, Canned, Frozen, etc.) under a single subscription.
     /// </summary>
     /// <remarks>
-    /// Data source ID: 0
-    /// </remarks>
-    /// <remarks>
-    /// CSV Format (7 columns):
-    /// yyyyMMdd,AverageRetailPrice,Unit,PreparationYieldFactor,CupEquivalentSize,CupEquivalentUnit,PricePerCupEquivalent
+    /// This is the plural collection class extending <see cref="BaseDataCollection"/>.
+    /// Individual data points are accessible via the <see cref="BaseDataCollection.Data"/> property
+    /// as <see cref="USDAFruitAndVegetable"/> instances.
     ///
-    /// Example:
-    /// 20130101,1.5675153914496354,per_pound,0.9,0.24250848840336534,pounds,0.42237309792162286
+    /// Example usage:
+    /// <code><![CDATA[
+    /// AddData<USDAFruitAndVegetables>(USDAFruitAndVegetable.Symbols.Apples);
+    ///
+    /// // In OnData:
+    /// foreach (var collection in slice.Get<USDAFruitAndVegetables>().Values)
+    /// {
+    ///     foreach (USDAFruitAndVegetable item in collection.Data)
+    ///     {
+    ///         Log($"{item.Form}: ${item.PricePerCupEquivalent}");
+    ///     }
+    /// }
+    /// ]]></code>
     /// </remarks>
-    public partial class USDAFruitAndVegetables : BaseData
+    public class USDAFruitAndVegetables : BaseDataCollection
     {
-        /// <summary>
-        /// Data source ID for USDA FruitAndVegetables
-        /// </summary>
-        public const int DataSourceId = 0;
-
-        /// <summary>
-        /// CSV schema definition for USDA Fruit and Vegetables data.
-        /// </summary>
-
-        internal static class CsvSchema
-        {
-            /// <summary>Total number of columns in CSV format.</summary>
-            public const int ColumnCount = 7;
-
-            /// <summary>Column 0: Date in yyyyMMdd format.</summary>
-            public const int DateIndex = 0;
-            /// <summary>Column 1: Average retail price per unit (pound or pint) (nullable)</summary>
-            public const int AverageRetailPriceIndex = 1;
-            /// <summary>Column 2: Unit of measure - PerPound (solids) or PerPint (juice) (nullable)</summary>
-            public const int UnitIndex = 2;
-            /// <summary>Column 3: Fraction of product that is edible after preparation (0.0-1.0) (nullable)</summary>
-            public const int PreparationYieldFactorIndex = 3;
-            /// <summary>Column 4: Size of one edible cup equivalent (nullable)</summary>
-            public const int CupEquivalentSizeIndex = 4;
-            /// <summary>Column 5: Unit of measure for CupEquivalentSize (pounds, pints, fluid_ounces) (nullable)</summary>
-            public const int CupEquivalentUnitIndex = 5;
-            /// <summary>Column 6: Normalized price per edible cup equivalent (comparable across forms) (nullable)</summary>
-            public const int PricePerCupEquivalentIndex = 6;
-
-            public const string PriceUnitPerPound = "per_pound";
-            public const string PriceUnitPerPint = "per_pint";
-
-            public const string CupEquivalentUnitPounds = "pounds";
-            public const string CupEquivalentUnitPints = "pints";
-            public const string CupEquivalentUnitFluidOunces = "fluid_ounces";
-        }
-
-        /// <summary>
-        /// Average retail price per unit (pound or pint).
-        /// </summary>
-        public decimal? AverageRetailPrice { get; set; }
-
-        /// <summary>
-        /// Unit of measure - PerPound (solids) or PerPint (juice).
-        /// </summary>
-        public PriceUnit? Unit { get; set; }
-
-        /// <summary>
-        /// Fraction of product that is edible after preparation (0.0-1.0).
-        /// </summary>
-        public decimal? PreparationYieldFactor { get; set; }
-
-        /// <summary>
-        /// Size of one edible cup equivalent.
-        /// </summary>
-        public decimal? CupEquivalentSize { get; set; }
-
-        /// <summary>
-        /// Unit of measure for <see cref="CupEquivalentSize"/>.
-        /// </summary>
-        public CupEquivalentUnit? CupEquivalentUnit { get; set; }
-
-        /// <summary>
-        /// Normalized price per edible cup equivalent (comparable across forms).
-        /// </summary>
-        public decimal? PricePerCupEquivalent { get; set; }
-
-        /// <summary>
-        /// Returns the primary value (PricePerCupEquivalent), or 0 if null.
-        /// </summary>
-        /// <remarks>
-        /// PricePerCupEquivalent is chosen over AverageRetailPrice because it enables
-        /// meaningful cross-form comparisons. A pound of fresh apples and a pint of
-        /// apple juice have different retail prices, but their price-per-cup-equivalent
-        /// normalizes for edible portion size, making cost comparisons valid across
-        /// fresh, canned, dried, and juice forms of the same product.
-        ///
-        /// Returns 0 when PricePerCupEquivalent is null to ensure chart data
-        /// always has a numeric value. Users should check HasValue on the underlying
-        /// property when null-awareness is needed.
-        /// </remarks>
-        public override decimal Value => PricePerCupEquivalent ?? 0m;
+        private static readonly USDAFruitAndVegetable _factory = new();
 
         /// <summary>
         /// Return the URL source for the data
@@ -133,77 +60,30 @@ namespace QuantConnect.DataSource
         /// <returns>Subscription data source</returns>
         public override SubscriptionDataSource GetSource(SubscriptionDataConfig config, DateTime date, bool isLiveMode)
         {
-
-            var seriesCode = config.Symbol.Value.ToLowerInvariant();
+            var productCode = config.Symbol.Value.ToLowerInvariant();
             var source = Path.Combine(
                 Globals.DataFolder,
                 "alternative",
                 "usda",
                 "fruitandvegetables",
-                $"{seriesCode}.csv"
+                $"{productCode}.csv"
             );
 
-            return new SubscriptionDataSource(source, SubscriptionTransportMedium.LocalFile, FileFormat.Csv);
-
+            return new SubscriptionDataSource(source, SubscriptionTransportMedium.LocalFile, FileFormat.FoldingCollection);
         }
 
-
         /// <summary>
-        /// Read and parse the data from a line
+        /// Read and parse the data from a line, delegating to the factory instance.
         /// </summary>
         /// <param name="config">Subscription data config</param>
         /// <param name="line">Line of data</param>
         /// <param name="date">Date of the data</param>
         /// <param name="isLiveMode">Is this live mode</param>
         /// <returns>Parsed data object</returns>
-        /// <seealso cref="CsvSchema"/>
         [return: MaybeNull]
         public override BaseData Reader(SubscriptionDataConfig config, string line, DateTime date, bool isLiveMode)
         {
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                throw new FormatException("Encountered empty line");
-            }
-
-            var columns = line.Split(',');
-
-            if (columns.Length != CsvSchema.ColumnCount)
-            {
-                throw new FormatException(
-                    $"Invalid CSV format, expected {CsvSchema.ColumnCount} columns but got {columns.Length}"
-                );
-            }
-            var dateText = columns[CsvSchema.DateIndex].Trim();
-            if (dateText.Length != 8 || !long.TryParse(dateText, out _))
-            {
-                throw new FormatException(
-                    "Invalid CSV format, expected yyyyMMdd date in first column"
-                );
-            }
-
-            var time = Parse.DateTimeExact(dateText, "yyyyMMdd");
-
-            // Parse nullable decimal fields
-            var averageRetailPrice = TryParseNullableDecimal(columns[CsvSchema.AverageRetailPriceIndex]);
-            var preparationYieldFactor = TryParseNullableDecimal(columns[CsvSchema.PreparationYieldFactorIndex]);
-            var cupEquivalentSize = TryParseNullableDecimal(columns[CsvSchema.CupEquivalentSizeIndex]);
-            var pricePerCupEquivalent = TryParseNullableDecimal(columns[CsvSchema.PricePerCupEquivalentIndex]);
-
-            // Parse nullable enum fields (empty string → null)
-            var unit = TryParsePriceUnit(columns[CsvSchema.UnitIndex]);
-            var cupEquivalentUnit = TryParseCupEquivalentUnit(columns[CsvSchema.CupEquivalentUnitIndex]);
-
-            return new USDAFruitAndVegetables()
-            {
-                Symbol = config.Symbol,
-                Time = time,
-                AverageRetailPrice = averageRetailPrice,
-                Unit = unit,
-                PreparationYieldFactor = preparationYieldFactor,
-                CupEquivalentSize = cupEquivalentSize,
-                CupEquivalentUnit = cupEquivalentUnit,
-                PricePerCupEquivalent = pricePerCupEquivalent,
-            };
+            return _factory.Reader(config, line, date, isLiveMode);
         }
 
         /// <summary>
@@ -212,7 +92,7 @@ namespace QuantConnect.DataSource
         /// <returns>True if requires mapping, false otherwise</returns>
         public override bool RequiresMapping()
         {
-            return false;
+            return _factory.RequiresMapping();
         }
 
         /// <summary>
@@ -221,7 +101,7 @@ namespace QuantConnect.DataSource
         /// <returns>True if sparse, false otherwise</returns>
         public override bool IsSparseData()
         {
-            return true;
+            return _factory.IsSparseData();
         }
 
         /// <summary>
@@ -230,7 +110,7 @@ namespace QuantConnect.DataSource
         /// <returns>The default resolution</returns>
         public override Resolution DefaultResolution()
         {
-            return Resolution.Daily;
+            return _factory.DefaultResolution();
         }
 
         /// <summary>
@@ -239,7 +119,7 @@ namespace QuantConnect.DataSource
         /// <returns>List of supported resolutions</returns>
         public override List<Resolution> SupportedResolutions()
         {
-            return DailyResolution;
+            return _factory.SupportedResolutions();
         }
 
         /// <summary>
@@ -248,127 +128,35 @@ namespace QuantConnect.DataSource
         /// <returns>The timezone</returns>
         public override DateTimeZone DataTimeZone()
         {
-            return TimeZones.Utc;
+            return _factory.DataTimeZone();
         }
 
         /// <summary>
-        /// Creates a clone of this instance
+        /// Creates a deep clone of this collection, including all data points.
         /// </summary>
-        /// <returns>A clone of this instance</returns>
+        /// <returns>A clone of this collection with cloned data points</returns>
         public override BaseData Clone()
         {
             return new USDAFruitAndVegetables()
             {
                 Symbol = Symbol,
                 Time = Time,
-                AverageRetailPrice = AverageRetailPrice,
-                Unit = Unit,
-                PreparationYieldFactor = PreparationYieldFactor,
-                CupEquivalentSize = CupEquivalentSize,
-                CupEquivalentUnit = CupEquivalentUnit,
-                PricePerCupEquivalent = PricePerCupEquivalent,
+                EndTime = EndTime,
+                Data = Data?.ToList(point => point.Clone()),
             };
         }
 
         /// <summary>
-        /// Returns a string representation of this data
+        /// Returns a string representation of this collection
         /// </summary>
         /// <returns>String representation</returns>
         public override string ToString()
         {
-
-            return Invariant($"{Symbol} - AverageRetailPrice: {AverageRetailPrice}, Unit: {Unit}, PreparationYieldFactor: {PreparationYieldFactor}, CupEquivalentSize: {CupEquivalentSize}, CupEquivalentUnit: {CupEquivalentUnit}, PricePerCupEquivalent: {PricePerCupEquivalent}");
-
-        }
-
-        /// <summary>
-        /// Parse a nullable decimal from CSV. Empty string returns null.
-        /// </summary>
-        private static decimal? TryParseNullableDecimal(string value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
+            if (Data == null || Data.Count == 0)
             {
-                return null;
+                return Invariant($"{Symbol} - Empty collection");
             }
-
-            if (!decimal.TryParse(value.Trim(), out var result))
-            {
-                throw new FormatException($"Invalid decimal value '{value}'");
-            }
-            return result;
+            return Invariant($"{Symbol} - [{string.Join(", ", Data.Select(d => d.ToString()))}]");
         }
-
-        /// <summary>
-        /// Parse price unit. Returns null if empty string.
-        /// </summary>
-        private static PriceUnit? TryParsePriceUnit(string value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return null;
-            }
-
-            var normalized = value.Trim().ToLowerInvariant();
-            return normalized switch
-            {
-                CsvSchema.PriceUnitPerPound => PriceUnit.PerPound,
-                CsvSchema.PriceUnitPerPint => PriceUnit.PerPint,
-                _ => null
-            };
-        }
-
-        /// <summary>
-        /// Parse cup equivalent unit. Returns null if empty string.
-        /// </summary>
-        private static CupEquivalentUnit? TryParseCupEquivalentUnit(string value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return null;
-            }
-
-            var normalized = value.Trim().ToLowerInvariant();
-            return normalized switch
-            {
-                CsvSchema.CupEquivalentUnitPounds => DataSource.CupEquivalentUnit.Pounds,
-                CsvSchema.CupEquivalentUnitPints => DataSource.CupEquivalentUnit.Pints,
-                CsvSchema.CupEquivalentUnitFluidOunces => DataSource.CupEquivalentUnit.FluidOunces,
-                _ => null
-            };
-        }
-    }
-
-    /// <summary>
-    /// Unit of measure for retail price.
-    /// </summary>
-    [JsonConverter(typeof(StringEnumConverter))]
-    public enum PriceUnit
-    {
-        /// <summary>Price per pound (used for solid products).</summary>
-        [EnumMember(Value = "per_pound")]
-        PerPound,
-
-        /// <summary>Price per pint (used for juice products).</summary>
-        [EnumMember(Value = "per_pint")]
-        PerPint,
-    }
-
-    /// <summary>
-    /// Unit of measure for cup equivalent size.
-    /// </summary>
-    [JsonConverter(typeof(StringEnumConverter))]
-    public enum CupEquivalentUnit
-    {
-        /// <summary>Cup equivalent measured in pounds.</summary>
-        [EnumMember(Value = "pounds")]
-        Pounds,
-
-        /// <summary>Cup equivalent measured in pints.</summary>
-        [EnumMember(Value = "pints")]
-        Pints,
-
-        /// <summary>Cup equivalent measured in fluid ounces.</summary>
-        [EnumMember(Value = "fluid_ounces")]
-        FluidOunces,
     }
 }

@@ -20,7 +20,8 @@ using QuantConnect.Data;
 namespace QuantConnect.DataSource
 {
     /// <summary>
-    /// Example algorithm using USDAFruitAndVegetables data
+    /// Example algorithm using USDAFruitAndVegetables data.
+    /// Demonstrates the collection pattern where one subscription provides all product forms.
     /// </summary>
     public class USDAFruitAndVegetablesAlgorithm : QCAlgorithm
     {
@@ -36,8 +37,13 @@ namespace QuantConnect.DataSource
             SetEndDate(2020, 12, 31);
             SetCash(100000);
 
-            _customDataSymbol = AddData<USDAFruitAndVegetables>(USDAFruitAndVegetables.Apples.Fresh, Resolution.Daily).Symbol;
 
+            // Add standalone custom data - one subscription per product
+            // The collection contains all forms (Fresh, Canned, Juice, etc.) for that product
+            _customDataSymbol = AddData<USDAFruitAndVegetables>(USDAFruitAndVegetable.Symbols.Apples, Resolution.Daily).Symbol;
+
+
+            // Request historical data for warmup
             var history = History<USDAFruitAndVegetables>(_customDataSymbol, 30, Resolution.Daily);
             Debug($"Received {history.Count()} historical data points");
         }
@@ -48,19 +54,25 @@ namespace QuantConnect.DataSource
         /// <param name="slice">Slice object keyed by symbol containing the stock data</param>
         public override void OnData(Slice slice)
         {
-            // Get the custom data
+            // Get the custom data collections
             var dataPoints = slice.Get<USDAFruitAndVegetables>();
 
             foreach (var kvp in dataPoints)
             {
                 var symbol = kvp.Key;
-                var data = kvp.Value;
+                var collection = kvp.Value;
 
-                Log($"{Time}: {symbol} - {data}");
-
-                if (data.PricePerCupEquivalent.HasValue)
+                // Iterate over all forms in the collection
+                foreach (USDAFruitAndVegetable data in collection.Data)
                 {
-                    Debug($"Price per cup: ${data.PricePerCupEquivalent.Value:F2}");
+                    // Log the data with form information
+                    Log($"{Time}: {symbol} [{data.Form}] - Price per cup: ${data.PricePerCupEquivalent:F2}");
+
+                    // Example: Filter by specific form
+                    if (data.Form == "Fresh" && data.PricePerCupEquivalent.HasValue)
+                    {
+                        Debug($"Fresh apple price: ${data.PricePerCupEquivalent.Value:F2}");
+                    }
                 }
             }
         }

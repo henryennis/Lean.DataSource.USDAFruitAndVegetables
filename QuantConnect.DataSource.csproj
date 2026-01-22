@@ -23,9 +23,7 @@
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     </PropertyGroup>
     <ItemGroup>
-        <Compile Remove="DataProcessing/**/*.cs"/>
         <Compile Remove="tests/**/*.cs"/>
-        <Compile Remove="DataQueueHandlers/**/*.cs"/>
     </ItemGroup>
     <ItemGroup>
         <PackageReference Include="QuantConnect.Common" Version="2.5.*"/>

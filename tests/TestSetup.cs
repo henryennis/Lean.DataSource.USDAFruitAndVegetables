@@ -36,11 +36,12 @@ namespace QuantConnect.DataSource.Tests
             Log.LogHandler = new ConsoleLogHandler();
             Log.DebuggingEnabled = true;
 
-            // Load configuration
+            // Load configuration from config.json
             Config.Reset();
 
-            // Set up any global configuration needed for tests
-            // Additional configuration can be added here when required
+            // Initialize Globals.DataFolder from config.json "data-folder" setting.
+            // This follows the SDK pattern (Lean.DataSource.SDK/tests/TestSetup.cs).
+            Globals.Reset();
         }
 
         /// <summary>
