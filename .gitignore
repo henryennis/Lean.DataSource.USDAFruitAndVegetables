@@ -1,0 +1,40 @@
+# Build outputs
+bin/
+obj/
+*.dll
+*.pdb
+*.exe
+
+# IDE
+.vs/
+.vscode/
+*.suo
+*.user
+*.sln.docstates
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+*.egg
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Data
+Data/
+
+output/*
+!output/alternative/
+!output/alternative/usda/
+!output/alternative/usda/fruitandvegetables/
+output/alternative/usda/fruitandvegetables/*
+!output/alternative/usda/fruitandvegetables/apples.csv
+!output/alternative/usda/fruitandvegetables/carrots.csv
+!output/alternative/usda/fruitandvegetables/grapefruit.csv
